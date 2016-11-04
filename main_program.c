@@ -27,9 +27,10 @@ e)valor de la dispersion de velocidades y cuartiles
 
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_rng.h>
-#include <gsl/gsl_sort_int.h>
+#include <gsl/gsl_sort.h>
 #include <gsl/gsl_sort_double.h>
 
+#include <gsl/gsl_statistics.h>
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_spline.h>
 
@@ -44,17 +45,55 @@ int N_part, Ncell;
 double mu_x, mu_y;
 
 FILE *out1=NULL;
+FILE *out2=NULL;
+FILE *out3=NULL;
+FILE *out4=NULL;
 
 //Estructuras
 struct particles   
 {
-  double *x;
+  double *x;           /*coordenadas particulas*/
   double *y;
   
-  double *vx;
-  double *vy;
+  double *vr;          /*vector velocidad*/
+  
+
+  double *new_posx;    /*coordenadas particulas re-escaladas*/
+  double *new_posy;
+  double *new_r;
+
+  double new_xc;         /*Coordenadas del nuevo centro*/
+  double new_yc;
 }; 
 struct particles part; 
+
+struct cells    
+{
+
+  int cell_ID;           /*ID de la celda*/
+  int Np;                /*# particulas en la celda*/
+  
+  double x;             /*coordenadas de la celda*/
+  double y;
+
+  double xc;            /*coordenadas del centro de masa*/
+  double yc;
+  
+  double vc;            /* vector velocidad del centro de masa*/
+  double vr;            /* vector velocidad radial*/
+
+  double masa;          /*masa contenida en la celda*/
+  double den_super;     /*densidad superficial de la celda*/
+
+  double r;             /*distancia al centro de masa de la celda*/
+  double sigma;         /*dispersion de velocidades*/
+
+  double cuartil;       /* cuartil de la celda*/
+  
+}; 
+struct cells *celda; 
+
+
 
 //Funciones
 int random_number()
@@ -68,8 +107,13 @@ int random_number()
   T = gsl_rng_default;
   r = gsl_rng_alloc (T);
 
+  printf("WRITING FLIE: positions.dat\n");
   
   write = fopen("positions.dat","w");
+
+  if(write == NULL)
+    printf("THE FILE: positions.dat CAN NOT BE OPENED\n");
+  
 
   for (i = 0; i < N_part; i++)
     {
@@ -98,7 +142,8 @@ int main(int argc, char *argv[])
 
   int i, j, NtotalCells, cell_ID;
   double xmin, xmax, ymin, ymax, zmin, zmax, BoxSize;
-  double CellSize, CellVol;
+  double *vc_celda, *sigma_cell;
+  double CellSize;
   double x, y;
   double xc, yc;
   double M;
@@ -110,12 +155,19 @@ int main(int argc, char *argv[])
   FILE *file = NULL, *file1=NULL;
   FILE *datospos = NULL, *sigma= NULL;
 
+  double *dist, distmin, distmax;
+  double xi, yi, xj, yj;
+  double X_centro, Y_centro;
+  
   double Xmax;
   double Ymax;
   double Zmax;
   double Xmin;
   double Ymin;
   double Zmin;
+
+  double median, upperq, lowerq;
+  
 
   //Carga de Parametros//
 
@@ -140,10 +192,16 @@ int main(int argc, char *argv[])
 
   part.y = (double *) malloc(N_part *sizeof(double));
 
-  part.vx = (double *) malloc(N_part *sizeof(double)); /*Velocities*/
+  part.vr = (double *) malloc(N_part *sizeof(double)); /*Velocities*/
+  
+  
+  part.new_posx = (double *) malloc(N_part *sizeof(double));  /*New sistem of Particles*/
 
-  part.vy = (double *) malloc(N_part *sizeof(double));
+  part.new_posy = (double *) malloc(N_part *sizeof(double));  
 
+  part.new_r = (double *) malloc(N_part *sizeof(double));
+
+    
   r = (double *) malloc(N_part *sizeof(double));
 
   size_t p[N_part];
@@ -171,160 +229,210 @@ int main(int argc, char *argv[])
             
     }
 
-  printf("THE CENTER OF MASS COORDINATES ARE:\n");
-  printf("xc :%lf yc: %lf\n", xc, yc);
+  
+  /*Con las coordenadas del centro de masa - Se calcula la distancia maxima */
 
+  /*Re-escalamos el sistema y calculamos Temperatura y Velocidad como una funcion de la distancia al nuevo centro-*/
+  
+  distmin = 10000*N_part;
 
-  /*distancia al centro de la distribucion - Temperatura - Velocidad-*/
+  distmax = 0.0;  
+ 
 
   out1= fopen("velocities.dat","w");
+
+  if(out1 == NULL)
+    printf("THE FILE: velocities.dat  CAN NOT BE OPENED\n");
+
+
+  out2= fopen("new_positions.dat","w");
+
+  if(out2 == NULL)
+    printf("THE FILE: new_positions.dat  CAN NOT BE OPENED\n");
+  
   
   for (i = 0; i < N_part; i++)
     {
-          
-      r[i] = distancia(xc, part.x[i], yc, part.y[i]);  //distancia centro
 
-      Temp = C *r[i];                        //Temperatura como una funcion de la distancia
+      xj = part.x[i] ;
+      yj = part.y[i] ;
 
-      part.vx[i] = (r[i] * part.x[i]) /t;    //velocidad como una funcion de la distancia
-
-      part.vy[i] = (r[i] * part.y[i]) /t;
-
-      fprintf (out1,"%lf %lf %lf\n", r[i], part.vx[i], part.vy[i]);
       
+      r[i] = distancia(xc, xj, yc, yj);  //distancia de las particulas al centro
+      
+      
+      if(distmin>r[i])//se calcula la distancia min y max
+	{
+	  distmin=r[i];
+	}
+      
+      
+      if(r[i]>distmax)
+	{
+	  distmax=r[i];
+	}
+      
+
+      //re-escalamos la distribucion
+      
+      part.new_posx[i] = xj + distmax;
+      part.new_posy[i] = yj + distmax;
+
+
+      //calculamos el nuevo centro de la distribucion
+      
+      part.new_xc += ( part.new_posx[i] * m ) / M;   //Coordenada X del nuevo centro 
+     
+      part.new_yc += ( part.new_posy[i] * m ) / M;   //Coordenada Y del nuevo centro 
+     
+
+      part.new_r[i] = distancia(part.new_xc, part.new_posx[i], part.new_yc,  part.new_posy[i]);  //distancia de las particulas al nuevo centro
+      
+
+      Temp = C * part.new_r[i] ;           //Temperatura como una funcion de la distancia
+
+      part.vr[i] = (part.new_r[i]) /t;    //velocidad como una funcion de la distancia
+     
+
+      fprintf (out1,"%lf %lf %lf\n", r[i], part.vr[i], Temp);
+      fprintf (out2, "%lf %lf\n", part.new_posx[i] , part.new_posy[i] ); 
     }
-      
+   
   fclose(out1);
+  fclose(out2);
 
-  /*Se calcula la distancia maxima -Lbox -> 101% dist_maxima -*/
-  
-  gsl_sort_largest_index (p, k, r, 1,N_part);//Se ordenan las particulas en forma decreciente
+  printf("THE CENTER OF MASS COORDINATES ARE:\n");
+  printf("xc :%lf yc: %lf\n",part.new_xc, part.new_yc );
 
-  Lbox = 1.01 * r[p[0]];
+
+  /*-Lbox -> 101% dist_maxima -*/
+
+  printf("Valor min de dist %.9lf\n",distmin);
+  printf("Valor max de dist: %.9lf\n",distmax);
+ 
+    
+  Lbox = 1.01 * 2 * distmax;
 
   printf("THE BOX SIZE IS:\n");
   printf("%lf\n", Lbox);
   
   //-------------------------------------------------------------------------CONSTRUCCION DEL GRID                                                                      
-  /*
+  
 
-  CellSize    = Lbox/Ncell;
-  CellVol     = pow(CellSize,3);
+  CellSize    = Lbox/(1.0 * Ncell);
+
   NtotalCells = Ncell*Ncell;
 
-
-
+  
   celda = malloc((size_t) NtotalCells*sizeof(struct cells));
-  //asignar tamañao a variable part tipo struct particles                                                                                                               
+                                                                                                 vc_celda = (double *) malloc((size_t) NtotalCells *sizeof(double));
+												 sigma_cell = (double *) malloc((size_t) NtotalCells *sizeof(double));
+												 
 
-  file=fopen("centros.dat","w");
+  out3=fopen("malla.dat","w");
 
-  for(k=0; k<Ncell; k++) // z                                                                                                                                           
+  if(out3 == NULL)
+    printf("THE FILE: malla.dat  CAN NOT BE OPENED\n");
+  
+
+  for(j=0; j<Ncell; j++)
+    
+    {    
+      
+      for(i=0; i<Ncell; i++)
+
+	{   
+	  cell_ID=Ncell * j + i;       //identificador de celda
+	  celda[cell_ID].cell_ID = cell_ID;
+	  
+	  //coordenadas del centro de cada celda                                                                                                                    
+	  celda[cell_ID].x = CellSize * 0.5 +i * CellSize;  //coordenada en el eje x
+	  celda[cell_ID].y = CellSize * 0.5 +j * CellSize;   //coordenada en el eje y
+
+	  //numero de particulas en la celda
+	  celda[cell_ID].Np = 0;
+	  
+	  fprintf(out3,"%lf %lf\n",celda[cell_ID].x, celda[cell_ID].y);
+	  
+	}
+        
+    }
+  
+  fclose(out3);
+
+  //---------------------------------------------------------------ASIGNACION DE PARTICULAS A CADA CELDA                                                              
+
+  /*Calculamos las propiedades para la malla -> masa total, 
+    densidad superficial, posicion centro de masa, vector velocidad,
+    dispersion de velocidadesy cuartil.*/
+
+
+  out4=fopen("properties_grid.dat","w");
+
+  if(out4 == NULL)
+    printf("THE FILE: malla.dat  CAN NOT BE OPENED\n");
+  
+  
+  for(i=0; i<NtotalCells; i++)
     {
 
-      z=  CellSize*0.5 +k*CellSize ;
+      Xmax = celda[i].x + CellSize*0.5;  //Coordenadas extremos de la celda
+      Xmin = celda[i].x - CellSize*0.5;
 
-      for(j=0; j<Ncell; j++) //y                                                                                                                                        
+      Ymax = celda[i].y + CellSize*0.5;
+      Ymin = celda[i].y - CellSize*0.5;
+
+      
+      for(j=0; j<N_part; j++)
         {
 
-          y=  CellSize*0.5 +j*CellSize ;
+          if( (part.new_posx[j]>=Xmin) && (part.new_posx[j]<Xmax) )
+            if( (part.new_posy[j]>=Ymin) && (part.new_posy[j]<Ymax) ) 
+              {
+	
+		celda[i].Np = celda[i].Np + 1;
 
-          for(i=0; i<Ncell; i++) // x                                                                                                                                   
-            {
+		celda[i].masa = celda[i].masa + 1;
 
-              //coordenada del centro en el eje x                                                                                                                       
-              x =   CellSize *0.5 +i*  CellSize ;
-	      //identificador de celda                                                                                                                                  
-              cell_ID=(k*Ncell+j)*Ncell+i;
-              celda[cell_ID].cell_ID = cell_ID;
+		celda[i].xc += (  celda[i].x * celda[i].masa ) ;
 
-              //coordenadas del centro de cada celda                                                                                                                    
-              celda[cell_ID].x = x;
-              celda[cell_ID].y = y;
-              celda[cell_ID].z = z;
+		celda[i].yc += (  celda[i].y * celda[i].masa ) ;
 
-              celda[cell_ID].Np = 0;
+		celda[i].r = distancia(celda[i].xc, celda[i].x, celda[i].yc, celda[i].y );
 
-              fprintf(file,"%f\t %f\t %f\n",x,y,z);
+		celda[i].vr = celda[i].r / t;
+		
+		celda[i].vc +=  (  celda[i].vr * celda[i].masa ) ;
 
-            }
-        }
+		vc_celda[i] = celda[i].vc;
+	
+		celda[i].sigma = gsl_stats_sd(vc_celda, 1, NtotalCells);
+
+		sigma_cell[i] = celda[i].sigma;
+	      } 
+	}                                
+
+      fprintf(out4,"%d %d %lf %lf %lf %lf %lf %lf %lf\n", celda[i].cell_ID, celda[i].Np, celda[i].masa, celda[i].xc, celda[i].yc, celda[i].r, celda[i].vr, celda[i].vc, celda[i].sigma);
+      
     }
+  fclose(out4);
+  
+  /*Calculo de los cuantiles -sigma-*/
 
-  fclose(file);
+  /*
+  
+  gsl_sort(sigma_cell, 1, NtotalCells);
 
-  //---------------------------------------------------------------ASIGNACION DE PARTICULAS A CADA CELDITA                                                              
+  upperq = gsl_stats_quantile_from_sorted_data(sigma_cell, 1, NtotalCells, 0.5);
 
-  for(i=0; i<NtotPart; i++)
-    {
-      part[i].v = sqrt(part[i].vel[0]*part[i].vel[0] + part[i].vel[1]*part[i].vel[1] + part[i].vel[2]*part[i].vel[2]);
-    }
+  lowerq = gsl_stats_quantile_from_sorted_data(sigma, 1, NtotalCells, 0.5);
 
-  Nguess = 100*NtotPart/NtotalCells;
-  printf(" *** Using %lfGb of ram for vel in grid\n",Nguess*sizeof(double)/(1024*1024*1024.0));
-
-  sigma=fopen("sigma_pos.dat","w");
-
-  for(k=0; k<NtotalCells; k++)
-    {
-
-      velocities = (double *) malloc((size_t) Nguess*sizeof(double));
-      if(velocities == NULL)
-        {
-          printf("do not use such a large amount of memory! (alloc velocity)\n");
-          exit(0);
-        }
-
-      Xmax = celda[k].x + CellSize*0.5;
-      Xmin = celda[k].x - CellSize*0.5;
-
-      Ymax = celda[k].y + CellSize*0.5;
-      Ymin = celda[k].y - CellSize*0.5;
-
-      Zmax = celda[k].z + CellSize*0.5;
-      Zmin = celda[k].z - CellSize*0.5;
-      for(i=0; i<NtotPart; i++)
-        {
-
-          if( (part[i].pos[0]>=Xmin) && (part[i].pos[0]<Xmax) )
-            if( (part[i].pos[1]>=Ymin) && (part[i].pos[1]<Ymax) )
-              if( (part[i].pos[2]>=Zmin) && (part[i].pos[2]<Zmax) )
-                {
-                  velocities[celda[k].Np] = 1.0*part[i].v;
-                  celda[k].Np = celda[k].Np+1;
-
-                  if(celda[k].Np >= Nguess)
-                    {
-                      Nguess = 2*Nguess;
-                      velocities = (double *) realloc(velocities, (size_t) Nguess*sizeof(double));
-                      printf("WARNING: Increasing the value of Nguess...\n");
-                      //exit(0);                                                                                                                                        
-                    }
-		}
-
-        }
-
-      velocities = (double *) realloc(velocities, (size_t) celda[k].Np*sizeof(double));
-
-      //gsl_sort(velocities, 1, celda[k].Np);                                                                                                                           
-      //median = gsl_stats_mean_from_sorted_data(v, 1, celda[cell_ID].Np); //va a calcular la dispersion de velocidades en cada celda                                   
-
-      celda[k].sigmaV = gsl_stats_sd(velocities, 1, celda[k].Np);
-      if(celda[k].Np <= 1)
-        celda[k].sigmaV = 0;
-
-      if((k%100) == 0)
-        printf("%10d %10d %16.8e %12.8f %12.8f %12.8f\n",k, celda[k].Np, celda[k].sigmaV, celda[k].x, celda[k].y, celda[k].z);
-
-      fprintf(sigma,"%10d %10d %16.8e %12.8f %12.8f %12.8f\n",k, celda[k].Np, celda[k].sigmaV, celda[k].x, celda[k].y, celda[k].z);
-
-      free(velocities);
-
-    }
+  printf("The upper quartile is %g\n", upperq);
+  
+  printf("The lower quartile is %g\n", lowerq);
 
   */
-
- 
+  
   return 0;
 
 }
