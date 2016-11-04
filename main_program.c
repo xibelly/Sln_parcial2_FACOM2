@@ -1,17 +1,24 @@
 /*
 Xibelly Eliseth Mosquera Escobar
 
-Solucion punto 4 Tarea 4 COMPUTACION CIENTIFICA AVANZADA
+Solucion parcial 2  COMPUTACION CIENTIFICA AVANZADA
 
-Tome la misma función anterior y sumele un ruido distribuido gausianamente con una varianza de
-0.5
-Use las rutinas de ajuste de gsl (no lineal) para ajustar la función g(x)=a*x*sin(b*x) a los datos.
-Obtenga los valores de los parámetros a y b que mejor describen el modelo.
+1) Generar una distribucion de particulas, por medio de una dsitribucion gaussiana. A su vez se asigna la velocidad y la temperatura como una funcion de la distancia de las particulas al centro de la distribucion.
 
-1) leer los datos interpolados y sumarle el ruidio gaussiano
+2) Se crea un grid rectangular con un tamaño Lbox=101 la distancia maxima de las particulas al centro. Se carga el grid, identificando las particulas que pertenecen a una celda dada y se calculan el siguiente conjunto de propiedades para la malla:
 
-2) usar las librerias de GSL para hacer un ajuste -no lineal- a dichos datos a la fucion g(x) = a * x * sin(b * x) y determinar los valores de los parametros a y b, que mejor describen el modelo.
+a)la masa total contenida en cada celda
+b)la densidad superficial de masa
+c)el vector velocidad
+d)posicion del centro de masa 
+e)valor de la dispersion de velocidades y cuartiles
 
+3)
+
+4) Se calcula el campo de densidad superficial y se le calcula tanto la primera como la segunda derivada -gradiente-.
+
+5) A dicho campo de densidad se le calcula la 2D DFT -Discrete Fourier Transform- y la 2D IDFT -Inverse Discrete Fourier Transform-
+ 
  */
 
 #include <stdlib.h>
@@ -175,7 +182,7 @@ int main(int argc, char *argv[])
   for (i = 0; i < N_part; i++)
     {
           
-      r[i] = distancia(xc, part.x[i], yc, part.y[i]);
+      r[i] = distancia(xc, part.x[i], yc, part.y[i]);  //distancia centro
 
       Temp = C *r[i];                        //Temperatura como una funcion de la distancia
 
@@ -189,7 +196,7 @@ int main(int argc, char *argv[])
       
   fclose(out1);
 
-  /*Se calcula la distancia maxima -Lbox-*/
+  /*Se calcula la distancia maxima -Lbox -> 101% dist_maxima -*/
   
   gsl_sort_largest_index (p, k, r, 1,N_part);//Se ordenan las particulas en forma decreciente
 
@@ -201,9 +208,9 @@ int main(int argc, char *argv[])
   //-------------------------------------------------------------------------CONSTRUCCION DEL GRID                                                                      
   /*
 
-  CellSize    = Header.BoxSize/Ncell;
+  CellSize    = Lbox/Ncell;
   CellVol     = pow(CellSize,3);
-  NtotalCells = Ncell*Ncell*Ncell;
+  NtotalCells = Ncell*Ncell;
 
 
 
