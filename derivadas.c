@@ -5,7 +5,7 @@
  * 
  *
  * La funcion "deriva" interpola los datos del campo densidad para luego
- * derivarlos
+ * derivarlos -> campo densidad superficial como funcion de la masa
  *
  * NOTA: interpolamos con akima_periodico 
  */
@@ -21,57 +21,70 @@
 #include <gsl/gsl_sort_double.h>
 
 
-double deriva(double z, void * params)
+double deriva(double z, void * data)
 {
-  int i, nread;
-  int N=1024;
+  int i, j, l, nread;
+  size_t n = ((struct data *)data)->n;
+
+  
   int Nlines;
   double xo, function;
   double *x,*y, *xx, *yy;
-
+  double a, b;
+  
   gsl_interp_accel *acelerador;
   gsl_spline *interpolador;
   
-  size_t p[N];
-  
-  int k = N;
-
-    
-  y = (double *) malloc(N *sizeof(double));
-  x = (double *) malloc(N *sizeof(double));
-  
-  yy = (double *) malloc(N *sizeof(double));
-  xx = (double *) malloc(N *sizeof(double));
+  FILE *write = NULL;  
+  FILE *read = NULL;  
+ 
+  yy = (double *) malloc(n *sizeof(double));
+  xx = (double *) malloc(n *sizeof(double));
   
         
-  for(i=0; i< N; i++)
+  for(i=0; i< n; i++)
     {
-      xx[i] = celda[i].r;
-      yy[i] = celda[i].den_super;
-      
-      //function += celda[i].den_super;
+      xx[i] = celda[i].masa;  //Campo densidad superficial en funcion de la masa
+      yy[i] = celda[i].den_super;  
       
 
     } 
    
-  gsl_sort_smallest_index (p, k, yy, 1, N);//Para asegurar la interpolacion ordenamos en forma creciente
-  
+ //Para asegurar la interpolacion ordenamos en forma creciente
+  gsl_sort(xx, 1, n);
+
+  gsl_sort(yy, 1, n);
+
   Nlines = 0;
 
-  for(i=0; i< N; i++)
+  write = fopen("datos_a_derivar.dat","w");
+
+  for(i=0; i<n; i++)
     {         
-      if( xx[p[i]] == xx[p[i+1]] )continue; //se impone para que los datos sean estrictamente crecientes
+      if((xx[i] < xx[i+1]) && (yy[i] < yy[i+1]) )//condicion de estrictamente crecientes
+	{
+	  fprintf(write,"%lf %lf\n", xx[i],yy[i]); 
+	  Nlines = Nlines +1 ; 
+	}
+    }
+  fclose(write);
+  
+  
+  y = (double *) malloc(Nlines *sizeof(double));
+  x = (double *) malloc(Nlines *sizeof(double));
+  
+  
+  read = fopen("datos_a_derivar.dat","r");
+  
+  for(j=0; j<Nlines; j++)
+    { 
+      nread = fscanf(read,"%lf %lf",&x[j], &y[j]);//datos que seran interpolados
+            
+    }
+  
+  fclose(read);
 
-      x[i] = xx[p[i]];
-      y[i] = yy[p[i]];
-
-      printf("%lf %lf\n", x[i], y[i]);
-      Nlines = Nlines +1 ; 
-      
-   }
-
-  printf("%d\n", Nlines);
-
+  
   acelerador   = gsl_interp_accel_alloc();
   interpolador = gsl_spline_alloc(gsl_interp_akima_periodic, (size_t) Nlines);
   gsl_spline_init(interpolador, x, y, (size_t) Nlines);
@@ -84,7 +97,7 @@ double deriva(double z, void * params)
   gsl_interp_accel_free(acelerador);
   
   
-  return function;
+  return function; //funcion que sera derivada en cada punto de la malla
   
 }
 

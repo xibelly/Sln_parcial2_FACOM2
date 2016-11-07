@@ -13,7 +13,8 @@ c)el vector velocidad
 d)posicion del centro de masa 
 e)valor de la dispersion de velocidades y cuartiles
 
-3)
+3) Se interpolan las cantidades anteriores considerando x-> xc y y-> variando  
+entre (0,Lbox) -se generan # aleatorios en este rango-.
 
 4) Se calcula el campo de densidad superficial y se le calcula tanto la primera como la segunda derivada -gradiente-.
 
@@ -105,11 +106,18 @@ struct cells
 }; 
 struct cells *celda; 
 
-struct data
+struct DATA
 {
   double *result;      /*Numeros aleatorios generados entre 0 y Lbox*/
+  size_t n;
 };
-struct data datos;
+struct DATA datos;
+
+struct data
+{
+  size_t n;
+};
+
 
 //Funciones
 
@@ -690,11 +698,18 @@ int main(int argc, char *argv[])
 
   //--------------------------------------------------------------------------CALCULO DERIVADAS CAMPO DE DENSIDAD
 
+  /*Derivadas del campo densidad superficial. Para obtener el gradiente de
+    dicho campo, interpolamos talque tengamos una funcion que podamos derivar en los
+    puntos (x,y) de cada celda.*/
+  
+  const size_t n = NtotalCells;
   gsl_function H;
-  double result1, result2, abserr1, abserr2;
+  double result, result1, result2, abserr1, abserr2;
 
-  H.function = &deriva;
-  H.params = 0;
+  struct data d = {n};
+
+  H.function = &deriva; //funcion interpolacion del campo densidad 
+  H.params = &d;
  
   
  out9=fopen("derivates_of_desity.dat","w");
@@ -707,10 +722,12 @@ int main(int argc, char *argv[])
  
   for(i=0; i<NtotalCells; i++)
     {
-      gsl_deriv_central(&H, celda[i].r, 1e-8, &result1, &abserr1);
-
+      gsl_deriv_central(&H, celda[i].x, 1e-8, &result1, &abserr1); //Componente x del gradiente
       
-      fprintf(out9,"%lf %lf\n", celda[i].r, result1);
+      gsl_deriv_central(&H, celda[i].y, 1e-8, &result2, &abserr2); //Componente y del gradiente
+      
+      
+      fprintf(out9,"%lf %lf %lf %lf\n", celda[i].x, result1, celda[i].y, result2);
       
     }
   
