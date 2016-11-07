@@ -25,6 +25,8 @@ e)valor de la dispersion de velocidades y cuartiles
 #include <stdio.h>
 #include <math.h>
 
+#include <gsl/gsl_math.h>
+#include <gsl/gsl_deriv.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_sort.h>
@@ -41,13 +43,22 @@ e)valor de la dispersion de velocidades y cuartiles
 #define C 1.0
 
 //Variables Globales
-int N_part, Ncell;
+int N_part, Ncell, NtotalCells;
 double mu_x, mu_y;
+double L;
+double value;
+double *xx, *yy;
+  
 
 FILE *out1=NULL;
 FILE *out2=NULL;
 FILE *out3=NULL;
 FILE *out4=NULL;
+FILE *out5=NULL;
+FILE *out6=NULL;
+FILE *out7=NULL;
+FILE *out8=NULL;
+FILE *out9=NULL;
 
 //Estructuras
 struct particles   
@@ -69,78 +80,54 @@ struct particles part;
 
 struct cells    
 {
-
+  int N_cells;
+  
   int cell_ID;           /*ID de la celda*/
   int Np;                /*# particulas en la celda*/
   
   double x;             /*coordenadas de la celda*/
-  double y;
+  double y, new_y;
 
   double xc;            /*coordenadas del centro de masa*/
   double yc;
   
-  double vc;            /* vector velocidad del centro de masa*/
-  double vr;            /* vector velocidad radial*/
+  double vc, new_vc;    /* vector velocidad del centro de masa*/
+  double vr, new_vr;    /* vector velocidad radial*/
 
   double masa;          /*masa contenida en la celda*/
   double den_super;     /*densidad superficial de la celda*/
 
-  double r;             /*distancia al centro de masa de la celda*/
-  double sigma;         /*dispersion de velocidades*/
+  double r, new_r;                 /*distancia al centro de masa de la celda*/
+  double sigma, new_sigma;         /*dispersion de velocidades*/
 
-  double cuartil;       /* cuartil de la celda*/
+  double cuartil;                  /* cuartil de la celda*/
   
 }; 
 struct cells *celda; 
 
-
+struct data
+{
+  double *result;      /*Numeros aleatorios generados entre 0 y Lbox*/
+};
+struct data datos;
 
 //Funciones
-int random_number()
-{
-  int i;
-  const gsl_rng_type * T;
-  gsl_rng * r;
 
-  FILE *write=NULL;
-  
-  T = gsl_rng_default;
-  r = gsl_rng_alloc (T);
+#include "distribution.c"
 
-  printf("WRITING FLIE: positions.dat\n");
-  
-  write = fopen("positions.dat","w");
+#include "random.c"
 
-  if(write == NULL)
-    printf("THE FILE: positions.dat CAN NOT BE OPENED\n");
-  
+#include "interpolador.c"
 
-  for (i = 0; i < N_part; i++)
-    {
-          
-      part.x[i] = gsl_ran_gaussian (r, mu_x); //Gaussian distribution
+#include "derivadas.c"
 
-      part.y[i] = gsl_ran_gaussian (r, mu_y); //Gaussian distribution
-      
-      fprintf (write,"%lf %lf \n", part.x[i] , part.y[i]);
-    }
 
+/*----------------------------------------------------------------PROGRAMA PRINCIPAL*/
  
-  printf("STATE OF PARTICLES GENERATION IS: SUCESS\n");
-  
-  gsl_rng_free (r);
-
-  fclose(write);
-  
-  return 0;
-}
-
-
-
 int main(int argc, char *argv[])
 {
 
-  int i, j, NtotalCells, cell_ID;
+  int i, j, cell_ID;
   double xmin, xmax, ymin, ymax, zmin, zmax, BoxSize;
   double *vc_celda, *sigma_cell;
   double CellSize;
@@ -150,10 +137,6 @@ int main(int argc, char *argv[])
   double *r;
   double Temp;
   double Lbox;
- 
-  
-  FILE *file = NULL, *file1=NULL;
-  FILE *datospos = NULL, *sigma= NULL;
 
   double *dist, distmin, distmax;
   double xi, yi, xj, yj;
@@ -167,27 +150,35 @@ int main(int argc, char *argv[])
   double Zmin;
 
   double median, upperq, lowerq;
+  double *X,*Y,*F;
+  double xo, yo;
+  
   
 
   //Carga de Parametros//
 
-  N_part = atoi(argv[1]); 
+  L = atof(argv[1]);        //Longitud de la caja
+
+  N_part = atoi(argv[2]);   //# de particlas
              
-  Ncell = atoi(argv[2]);
+  Ncell = atoi(argv[3]);    //# de celdas
 
-  mu_x = atof(argv[3]);
+  mu_x = atof(argv[4]);     //varianza para el eje x
 
-  mu_y = atof(argv[4]);
+  mu_y = atof(argv[5]);     //varaianza para el eje y
 
-  if(argc != 5)
+  if(argc != 6)
     {
       printf("ERROR--> use as:\n");
-      printf(" USE:  <Nparticles> <Ncells>  <mu_x>  <mu_y>\n");
+      printf(" USE:<Lbox>  <Nparticles> <Ncells>  <mu_x>  <mu_y>\n");
       exit(0);
     }
 
-  printf("%d %d %lf %lf\n", N_part, Ncell, mu_x, mu_y );
+  printf("%lf %d %d %lf %lf\n", L, N_part, Ncell, mu_x, mu_y );
 
+  NtotalCells = Ncell*Ncell;
+
+   
   part.x = (double *) malloc(N_part *sizeof(double));  /*Particles*/
 
   part.y = (double *) malloc(N_part *sizeof(double));
@@ -196,7 +187,6 @@ int main(int argc, char *argv[])
   
   
   part.new_posx = (double *) malloc(N_part *sizeof(double));  /*New sistem of Particles*/
-
   part.new_posy = (double *) malloc(N_part *sizeof(double));  
 
   part.new_r = (double *) malloc(N_part *sizeof(double));
@@ -204,15 +194,34 @@ int main(int argc, char *argv[])
     
   r = (double *) malloc(N_part *sizeof(double));
 
-  size_t p[N_part];
 
-  int k = N_part;
+  celda = malloc((size_t) NtotalCells*sizeof(struct cells));         /*Cells*/
+  vc_celda = (double *) malloc((size_t) NtotalCells *sizeof(double));
+  sigma_cell = (double *) malloc((size_t) NtotalCells *sizeof(double));
+  
+
+  datos.result = (double *) malloc((size_t) NtotalCells *sizeof(double)); /*Random number generation*/
+
+
+  X  = (double *) malloc(NtotalCells *sizeof(double)); /*Arrays Interpolation*/
+  Y  = (double *) malloc(NtotalCells *sizeof(double));
+  F  = (double *) malloc(NtotalCells *sizeof(double));
+  
+  yy = (double *) malloc(NtotalCells *sizeof(double));
+  xx = (double *) malloc(NtotalCells *sizeof(double));
+
+  
+  size_t p[NtotalCells]; /*Sort of cell porperties*/
+
+  int k = NtotalCells;
+
 
 
   //-------------------------------------------------------------------------GENERACION DE PARTICULAS
 
-  random_number();
+  random_distribution(N_part, mu_x, mu_y);
 
+  printf("THE PARTICLE DISTRIBUTION IS CREATED\n"); 
 
   //--------------------------------------------------------------------------CALCULO CENTRO DISTRIBUCION
 
@@ -249,7 +258,14 @@ int main(int argc, char *argv[])
 
   if(out2 == NULL)
     printf("THE FILE: new_positions.dat  CAN NOT BE OPENED\n");
+
+
   
+  printf("WRITING FLIE: new_positions.dat\n");
+
+  printf("WRITING FLIE: velocities.dat\n");
+
+
   
   for (i = 0; i < N_part; i++)
     {
@@ -307,11 +323,11 @@ int main(int argc, char *argv[])
 
   /*-Lbox -> 101% dist_maxima -*/
 
-  printf("Valor min de dist %.9lf\n",distmin);
-  printf("Valor max de dist: %.9lf\n",distmax);
+  printf("MINIMUM VALUE OF DISTANCE: %.9lf\n",distmin);
+  printf("MAXIMUM VALUE OF DISTANCE: %.9lf\n",distmax);
  
     
-  Lbox = 1.01 * 2 * distmax;
+  Lbox = 1.01 * 2.0 * distmax;
 
   printf("THE BOX SIZE IS:\n");
   printf("%lf\n", Lbox);
@@ -321,19 +337,14 @@ int main(int argc, char *argv[])
 
   CellSize    = Lbox/(1.0 * Ncell);
 
-  NtotalCells = Ncell*Ncell;
-
-  
-  celda = malloc((size_t) NtotalCells*sizeof(struct cells));
-                                                                                                 vc_celda = (double *) malloc((size_t) NtotalCells *sizeof(double));
-												 sigma_cell = (double *) malloc((size_t) NtotalCells *sizeof(double));
-												 
-
-  out3=fopen("malla.dat","w");
+   
+    
+  out3=fopen("grid.dat","w");
 
   if(out3 == NULL)
-    printf("THE FILE: malla.dat  CAN NOT BE OPENED\n");
+    printf("THE FILE: grid.dat  CAN NOT BE OPENED\n");
   
+  printf("WRITING FLIE: grid.dat\n");
 
   for(j=0; j<Ncell; j++)
     
@@ -360,19 +371,23 @@ int main(int argc, char *argv[])
   
   fclose(out3);
 
+  printf("THE GRID IS CREATED\n"); 
+
   //---------------------------------------------------------------ASIGNACION DE PARTICULAS A CADA CELDA                                                              
 
   /*Calculamos las propiedades para la malla -> masa total, 
     densidad superficial, posicion centro de masa, vector velocidad,
-    dispersion de velocidadesy cuartil.*/
-
+    dispersion de velocidades y cuartil, de cada una de las celdas que la
+    conforman.*/
 
   out4=fopen("properties_grid.dat","w");
 
   if(out4 == NULL)
-    printf("THE FILE: malla.dat  CAN NOT BE OPENED\n");
+    printf("THE FILE: properties_grid.dat  CAN NOT BE OPENED\n");
   
   
+  printf("WRITING FLIE: properties_grid.dat\n");
+
   for(i=0; i<NtotalCells; i++)
     {
 
@@ -389,51 +404,323 @@ int main(int argc, char *argv[])
           if( (part.new_posx[j]>=Xmin) && (part.new_posx[j]<Xmax) )
             if( (part.new_posy[j]>=Ymin) && (part.new_posy[j]<Ymax) ) 
               {
-	
+
+		 /*Calculo del # total de particulas, masa y densidad superficial*/
+
 		celda[i].Np = celda[i].Np + 1;
 
 		celda[i].masa = celda[i].masa + 1;
+
+		celda[i].den_super = celda[i].masa / (CellSize * CellSize);
+
+		
+		 /*Calculo de las coordenadas centro de masa y distancia de este*/
 
 		celda[i].xc += (  celda[i].x * celda[i].masa ) ;
 
 		celda[i].yc += (  celda[i].y * celda[i].masa ) ;
 
-		celda[i].r = distancia(celda[i].xc, celda[i].x, celda[i].yc, celda[i].y );
+		celda[i].r = distancia(celda[i].xc, part.new_posx[j], celda[i].yc, part.new_posy[j] );
+
+		 /*Calculo del vector velocidad y velocidad del centro de masa*/
 
 		celda[i].vr = celda[i].r / t;
 		
 		celda[i].vc +=  (  celda[i].vr * celda[i].masa ) ;
 
 		vc_celda[i] = celda[i].vc;
-	
+
+
+		/*Calculo de la dispersion de velocidades -velocidad del centro de masa-*/
+
 		celda[i].sigma = gsl_stats_sd(vc_celda, 1, NtotalCells);
 
 		sigma_cell[i] = celda[i].sigma;
-	      } 
-	}                                
 
-      fprintf(out4,"%d %d %lf %lf %lf %lf %lf %lf %lf\n", celda[i].cell_ID, celda[i].Np, celda[i].masa, celda[i].xc, celda[i].yc, celda[i].r, celda[i].vr, celda[i].vc, celda[i].sigma);
+
+		 /*Calculo de los cuantiles -sigma-*/
+
+		gsl_sort(sigma_cell, 1, NtotalCells);
+
+
+		median = gsl_stats_median_from_sorted_data(sigma_cell, 1, NtotalCells);
+		
+		upperq = gsl_stats_quantile_from_sorted_data(sigma_cell, 1, NtotalCells, 0.75);
+  
+		lowerq = gsl_stats_quantile_from_sorted_data(sigma_cell, 1, NtotalCells, 0.25);
+
+	      } 
+	}                        
+      
+     
+      fprintf(out4,"%d %d %lf %lf %lf %lf %lf %lf %g %g %g\n",
+	      celda[i].cell_ID, celda[i].Np, celda[i].masa, celda[i].den_super, 
+	      celda[i].xc, celda[i].yc, celda[i].vc, 
+	      celda[i].sigma, median, upperq, lowerq);
       
     }
   fclose(out4);
+
+  printf("THE GRID IS LOADED\n"); 
   
-  /*Calculo de los cuantiles -sigma-*/
+  //--------------------------------------------------------------------------CALCULO INTERPOLACION CANTIDADES ANTERIORES
 
-  /*
-  
-  gsl_sort(sigma_cell, 1, NtotalCells);
+  /*Interpolamos del conjunto anterior de propiedades
+    de cada celda.
 
-  upperq = gsl_stats_quantile_from_sorted_data(sigma_cell, 1, NtotalCells, 0.5);
-
-  lowerq = gsl_stats_quantile_from_sorted_data(sigma, 1, NtotalCells, 0.5);
-
-  printf("The upper quartile is %g\n", upperq);
-  
-  printf("The lower quartile is %g\n", lowerq);
-
+    Para ello calculamos de nuevo dichas propiedades
+    dejando fijo    x = xcentro_celda
+                    y = variando de (0, Lbox) -> generamos # aleatorios en
+			       este rango.
+   
+			       
   */
+
+
+
+  random_gfsr4(NtotalCells); //Genracion de # alatorios
+
   
+  for(i=0; i<NtotalCells; i++)  //f(xc,y)
+    {
+      X[i] = celda[i].xc;
+      
+      Y[i] = Lbox * datos.result[i];
+      
+    }
+
+  //////////////////////////////////Interpolacion Masa///////////////////////////////////
+  
+  
+  out5=fopen("inter_mass.dat","w");
+
+  if(out5 == NULL)
+    printf("THE FILE: inter_mass.dat  CAN NOT BE OPENED\n");
+  
+  
+  printf("WRITING FLIE: inter_mass.dat\n");
+
+  
+   for(i=0; i<NtotalCells; i++)
+    {
+      F[i] = celda[i].masa;  //f(xc,y) -> mass
+      
+    }
+ 
+
+  gsl_sort_smallest_index (p, k, Y, 1, NtotalCells);//Para asegurar la interpolacion se ordenan los datos de forma creciente
+
+   //INTERPOLACION AKIMA PERIODICA
+
+  for(i=0; i<NtotalCells; i++)
+    {
+      xx[i] = Y[p[i]];
+
+      yy[i] = F[p[i]];
+    }
+    
+  for(i=0; i<100; i=i+10)
+    {
+      for (xo = xx[0]; xo < xx[NtotalCells-1]; xo = xo + 10)
+	{
+	  yo = interpolador_akima_per(xo, NtotalCells, xx, yy);
+	  fprintf (out5,"%d %g\n", i, yo);
+	}
+    }
+  
+  
+  fclose(out5);
+
+  printf("STATE OF MASS INTERPOLATION IS: SUCESS\n"); 
+
+  //////////////////////////////////Interpolacion Densidad superficial///////////////////////////////////
+  
+  
+
+  out6=fopen("inter_density.dat","w");
+
+  if(out6 == NULL)
+    printf("THE FILE: inter_density.dat  CAN NOT BE OPENED\n");
+  
+  
+  printf("WRITING FLIE: inter_density.dat\n");
+
+  
+   for(i=0; i<NtotalCells; i++)
+    {
+      F[i] = celda[i].den_super; //f(xc,y) -> surface density
+      
+    }
+ 
+
+  gsl_sort_smallest_index (p, k, Y, 1, NtotalCells);//Para asegurar la interpolacion se ordenan los datos de forma creciente
+
+   //INTERPOLACION AKIMA PERIODICA
+
+  for(i=0; i<NtotalCells; i++)
+    {
+      xx[i] = Y[p[i]];
+
+      yy[i] = F[p[i]];
+    }
+    
+  
+  for(i=0; i<100; i=i+10)
+    {
+
+      for (xo = xx[0]; xo < xx[NtotalCells-1]; xo = xo + 10)
+	{
+	  yo = interpolador_akima_per(xo, NtotalCells, xx, yy);
+	  fprintf (out6,"%d %g\n", i, yo);
+	}
+    }
+      
+  fclose(out6);
+
+  printf("STATE OF SURFACE-DENSITY INTERPOLATION IS: SUCESS\n");
+
+
+  //////////////////////////////////Interpolacion Vector velocidad del centro de masa///////////////////////////////////
+   
+  
+
+  out7=fopen("inter_velocity_center.dat","w");
+
+  if(out7 == NULL)
+    printf("THE FILE: inter_velocity_center.dat  CAN NOT BE OPENED\n");
+  
+  
+  printf("WRITING FLIE: inter_velocity_center.dat\n");
+
+  
+   for(i=0; i<NtotalCells; i++)
+    {
+      celda[i].new_y = Y[i];
+      
+      celda[i].new_r = distancia(celda[i].xc, celda[i].xc, celda[i].yc, celda[i].new_y);
+
+
+      /*Calculo del vector velocidad y velocidad del centro de masa*/
+      
+      celda[i].new_vr = celda[i].new_r / t;
+      
+      celda[i].new_vc +=  (  celda[i].new_vr * celda[i].masa ) ;
+
+      
+      F[i] = celda[i].new_vc; //f(xc,y) -> velocity center vector
+      
+    }
+
+
+
+  gsl_sort_smallest_index (p, k, Y, 1, NtotalCells);//Para asegurar la interpolacion se ordenan los datos de forma creciente
+
+   //INTERPOLACION AKIMA PERIODICA
+
+  for(i=0; i<NtotalCells; i++)
+    {
+      xx[i] = Y[p[i]];
+
+      yy[i] = F[p[i]];
+    }
+    
+  for(i=0; i<100; i=i+10)
+    {
+      
+      for (xo = xx[0]; xo < xx[NtotalCells-1]; xo = xo + 10)
+	{
+	  yo = interpolador_akima_per(xo, NtotalCells,xx ,yy);
+	  fprintf (out7,"%d %g\n", i, yo);
+	}
+    }
+  
+  fclose(out7);
+
+  printf("STATE OF VELOCITY-VECTOR INTERPOLATION IS: SUCESS\n");
+
+  
+  //////////////////////////////////Interpolacion dispersion de velocidades///////////////////////////////////
+   
+  
+
+  out8=fopen("inter_velocity_dispersion.dat","w");
+
+  if(out8 == NULL)
+    printf("THE FILE: inter_velocity_dispersion.dat  CAN NOT BE OPENED\n");
+  
+  
+  printf("WRITING FLIE: inter_velocity_dispersion.dat\n");
+
+  
+   for(i=0; i<NtotalCells; i++)
+    {
+      vc_celda[i] = celda[i].new_vc;
+
+      celda[i].new_sigma = gsl_stats_sd(vc_celda, 1, NtotalCells);
+
+      F[i] = celda[i].new_sigma; //f(xc,y) -> velocity dispersion
+      
+    }
+ 
+
+  gsl_sort_smallest_index (p, k, Y, 1, NtotalCells);//Para asegurar la interpolacion se ordenan los datos de forma creciente
+
+   //INTERPOLACION AKIMA PERIODICA
+
+  for(i=0; i<NtotalCells; i++)
+    {
+      xx[i] = Y[p[i]];
+
+      yy[i] = F[p[i]];
+    }
+    
+  for(i=0; i<100; i=i+10)
+    {
+      
+      for (xo = xx[0]; xo < xx[NtotalCells-1]; xo = xo + 10)
+	{
+	  yo = interpolador_akima_per(xo, NtotalCells, xx, yy);
+	  fprintf (out8,"%d %g\n", i, yo);
+	}
+      
+    }
+  fclose(out8);
+  
+  printf("STATE OF VELOCITY DISPERSION INTERPOLATION IS: SUCESS\n");
+
+  //--------------------------------------------------------------------------CALCULO DERIVADAS CAMPO DE DENSIDAD
+
+  gsl_function H;
+  double result1, result2, abserr1, abserr2;
+
+  H.function = &deriva;
+  H.params = 0;
+ 
+  
+ out9=fopen("derivates_of_desity.dat","w");
+
+  if(out9 == NULL)
+    printf("THE FILE: derivates_of_desity.dat  CAN NOT BE OPENED\n");
+  
+  
+  printf("WRITING FLIE: derivates_of_desity.dat\n");
+ 
+  for(i=0; i<NtotalCells; i++)
+    {
+      gsl_deriv_central(&H, celda[i].r, 1e-8, &result1, &abserr1);
+
+      
+      fprintf(out9,"%lf %lf\n", celda[i].r, result1);
+      
+    }
+  
+    fclose(out9);
+
+  printf("STATE OF DERIVATES OF SURFACE DENSITY IS: SUCESS\n");
+ 
+
   return 0;
 
 }
+
 
