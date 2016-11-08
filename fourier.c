@@ -48,7 +48,7 @@ void fourier(int n, double L)
   dft  = (fftw_complex *) malloc((size_t)N* sizeof(fftw_complex));
   idft  = (fftw_complex *) malloc((size_t)N*sizeof(fftw_complex));
   
-  printf("THE PBC'S ARE APPLIED\n");
+  printf("THE PADDING FOR SURFACE DENSITY FIELD IS APPLIED\n");
 
   int top1 = floor ((N*0.5) - n);
 
