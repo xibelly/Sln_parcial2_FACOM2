@@ -61,6 +61,7 @@ FILE *out6=NULL;
 FILE *out7=NULL;
 FILE *out8=NULL;
 FILE *out9=NULL;
+FILE *extra=NULL;
 
 //Estructuras
 struct particles   
@@ -86,6 +87,9 @@ struct cells
   
   int cell_ID;           /*ID de la celda*/
   int Np;                /*# particulas en la celda*/
+
+  double *part_posx;     /*Coordenas particulas en la celda*/
+  double *part_posy;
   
   double x;             /*coordenadas de la celda*/
   double y, new_y;
@@ -208,7 +212,13 @@ int main(int argc, char *argv[])
   celda = malloc((size_t) NtotalCells*sizeof(struct cells));         /*Cells*/
   vc_celda = (double *) malloc((size_t) NtotalCells *sizeof(double));
   sigma_cell = (double *) malloc((size_t) NtotalCells *sizeof(double));
+
   
+  for(i=0; i<NtotalCells; i++)
+    {
+      celda[i].part_posx = (double *) malloc(N_part *sizeof(double));  /*Particles coordinates into the cell*/
+      celda[i].part_posy = (double *) malloc(N_part *sizeof(double));
+    }
 
   datos.result = (double *) malloc((size_t) NtotalCells *sizeof(double)); /*Random number generation*/
 
@@ -398,6 +408,16 @@ int main(int argc, char *argv[])
   
   printf("WRITING FLIE: properties_grid.dat\n");
 
+
+  extra=fopen("particles_in_cell.dat","w");
+
+  if(extra == NULL)
+    printf("THE FILE: particles_in_cell.dat  CAN NOT BE OPENED\n");
+  
+  
+  printf("WRITING FLIE: particles_in_cell.dat\n");
+
+
   for(i=0; i<NtotalCells; i++)
     {
 
@@ -415,7 +435,13 @@ int main(int argc, char *argv[])
             if( (part.new_posy[j]>=Ymin) && (part.new_posy[j]<Ymax) ) 
               {
 
-		 /*Calculo del # total de particulas, masa y densidad superficial*/
+		/*Particulas dentro de cada celda*/
+		
+		celda[i].part_posx[j] = part.new_posx[j];
+
+		celda[i].part_posy[j] = part.new_posy[j];
+
+		/*Calculo del # total de particulas, masa y densidad superficial*/
 
 		celda[i].Np = celda[i].Np + 1;
 
@@ -458,6 +484,9 @@ int main(int argc, char *argv[])
 		upperq = gsl_stats_quantile_from_sorted_data(sigma_cell, 1, NtotalCells, 0.75);
   
 		lowerq = gsl_stats_quantile_from_sorted_data(sigma_cell, 1, NtotalCells, 0.25);
+
+		
+		fprintf(extra,"%d %lf %lf\n",celda[i].cell_ID, celda[i].part_posx[j], celda[i].part_posy[j]);
 
 	      } 
 	}                        
