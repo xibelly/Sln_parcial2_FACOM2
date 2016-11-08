@@ -25,6 +25,7 @@ entre (0,Lbox) -se generan # aleatorios en este rango-.
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <fftw3.h>
 
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_deriv.h>
@@ -129,6 +130,7 @@ struct data
 
 #include "derivadas.c"
 
+#include "fourier.c"
 
 /*----------------------------------------------------------------PROGRAMA PRINCIPAL*/
  
@@ -735,6 +737,15 @@ int main(int argc, char *argv[])
 
   printf("STATE OF DERIVATES OF SURFACE DENSITY IS: SUCESS\n");
  
+
+  //--------------------------------------------------------------------------CALCULO FOURIER TRANSFORMS
+
+  /*Calculamos la 2D DFT -Discrete Fourier Transform- y la 2D IDFT -Inverse Discrete Fourier Transform-
+    
+   */
+
+  
+  fourier(NtotalCells, Lbox);
 
   return 0;
 
