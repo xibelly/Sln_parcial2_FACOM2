@@ -39,7 +39,7 @@ void fourier(int n, double L)
   fftw_plan my_plan, my_plan2;
   double kx, ky, k2;
   
-  N = n*n;
+  N = 3*n*n;//30000
 
   pad.density = (double*) malloc((size_t)N* sizeof(double));
   
@@ -50,9 +50,9 @@ void fourier(int n, double L)
   
   printf("THE PADDING FOR SURFACE DENSITY FIELD IS APPLIED\n");
 
-  int top1 = floor ((N*0.5) - n);
+  int top1 = floor ((N*0.5) - n*n);//5000
 
-  int top2 = floor (N*0.5);
+  int top2 = floor (N*0.5); //15000
 
   for(i=0; i<top1; i++) 
     {

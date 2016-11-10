@@ -125,18 +125,9 @@ struct cells *celda;
 
 struct DATA
 {
-  double *result;      /*Numeros aleatorios generados entre 0 y Lbox*/
-  size_t n;
-  double *F;
-  
+  double *result;
 };
 struct DATA datos;
-
-struct data
-{
-  size_t n;
-  double Lbox;
-};
 
 
 //Funciones
@@ -153,15 +144,15 @@ struct data
 
 
 
+
 /*----------------------------------------------------------------PROGRAMA PRINCIPAL*/
  
 int main(int argc, char *argv[])
 {
 
   int i, j, cell_ID;
-  double xmin, xmax, ymin, ymax, zmin, zmax, BoxSize;
-  double *vc_celda, *sigma_cell;
-  
+  double xmin, xmax, ymin, ymax, BoxSize;
+   
   double x, y;
   double xc, yc;
   double M;
@@ -175,16 +166,16 @@ int main(int argc, char *argv[])
   
   double Xmax;
   double Ymax;
-  double Zmax;
+  
   double Xmin;
   double Ymin;
-  double Zmin;
+ 
 
   double median, upperq, lowerq;
   double skewness;
   double kurtosis;
-  double *X,*Y,*F,*Xo;
-  double xo, yo;
+
+  double *YC;
 
     
 
@@ -231,9 +222,7 @@ int main(int argc, char *argv[])
 
 
   celda = malloc((size_t) NtotalCells*sizeof(struct cells));         /*Cells*/
-  vc_celda = (double *) malloc((size_t) NtotalCells *sizeof(double));
-  sigma_cell = (double *) malloc((size_t) NtotalCells *sizeof(double));
-
+ 
   
   for(i=0; i<NtotalCells; i++)
     {
@@ -247,25 +236,14 @@ int main(int argc, char *argv[])
 
     }
 
-   double * mag_v = (double *) malloc(N_part *sizeof(double));
+  double * mag_v = (double *) malloc(N_part *sizeof(double));
 
   datos.result = (double *) malloc((size_t) NtotalCells *sizeof(double)); /*Random number generation*/
 
-  datos.F = (double *) malloc((size_t) NtotalCells *sizeof(double)); 
+   
 
 
-  X  = (double *) malloc(NtotalCells *sizeof(double)); /*Arrays Interpolation*/
-  Xo  = (double *) malloc(NtotalCells *sizeof(double));  
-  Y  = (double *) malloc(NtotalCells *sizeof(double));
-  F  = (double *) malloc(NtotalCells *sizeof(double));
-  
-  yy = (double *) malloc(NtotalCells *sizeof(double));
-  xx = (double *) malloc(NtotalCells *sizeof(double));
-
-  
-
-  
-
+  YC = (double *) malloc(NtotalCells *sizeof(double));/*Array Interpolation*/
 
   //-------------------------------------------------------------------------GENERACION DE PARTICULAS
 
@@ -606,98 +584,16 @@ int main(int argc, char *argv[])
    
 			       
   */
+  for(i=0; i<NtotalCells; i++)
+  {
+    YC[i] = CellSize * 0.5 + i * CellSize; //centro en y 
+  }
 
-  random_gfsr4(Ncell); //Genracion de # alatorios
-
-  for(j=0; j<Ncell; j++)
-    {    
-      Xo[cell_ID] = Lbox * datos.result[cell_ID];
-    }
-
-
-   //////////////////////////////////Interpolacion Masa///////////////////////////////////
-  
-  
-  out5=fopen("inter_mass.dat","a");
-
-  if(out5 == NULL)
-    printf("THE FILE: inter_mass.dat  CAN NOT BE OPENED\n");
-  
-  
-  printf("WRITING FLIE: inter_mass.dat\n");
-
-  for(j=0; j<Ncell; j++)
-    {    
-      
-      for(i=0; i<Ncell; i++)
-	{   
-	  cell_ID=Ncell * j + i;	  
-	  
-	  xx[cell_ID] =  celda[cell_ID].yc; //eje_y celda
-	  
-	  yy[cell_ID] =  celda[cell_ID].masa;  //funcion a interpolar
-       	  
-	    
-	}
-      gsl_sort(xx, 1, NtotalCells); //ordena en forma creciente yc_celda para cada columna de celdas
-      
-      for (xo = Xo[0]; xo < Xo[NtotalCells-1]; xo = xo + 10)
-	{
-	  
-	  yo = interpolador_akima_per(xo, Ncell*Ncell, xx, yy);
-	  fprintf (out5,"%g %g\n", xo, yo);
-	}
-      
-    }
-  fclose(out5);
-  
-  printf("STATE OF MASS INTERPOLATION IS: SUCESS\n"); 
+  curvas(200, NtotalCells, Lbox, YC);
 
   
-  //////////////////////////////////Interpolacion Densidad superficial///////////////////////////////////
-
-  out6=fopen("inter_density.dat","w");
   
-  if(out6 == NULL)
-    printf("THE FILE: inter_density.dat  CAN NOT BE OPENED\n");
-  
-  
-  printf("WRITING FLIE: inter_density.dat\n");
-
    
- 
-  for(j=0; j<Ncell; j++)
-    {    
-      
-      for(i=0; i<Ncell; i++)
-	{   
-	  cell_ID=Ncell * j + i;	  
-	  
-	  xx[cell_ID] =  celda[cell_ID].yc; //eje_y celda
-	  
-	  yy[cell_ID] =  celda[cell_ID].den_super;  //funcion a interpolar
-	  
-	  
-	}
-      gsl_sort(xx, 1, NtotalCells); //ordena en forma creciente yc_celda para cada columna de celdas
-      
-      for (xo = Xo[0]; xo < Xo[Ncell-1]; xo = xo + 10)
-	{
-	  
-	  yo = interpolador_akima_per(xo, Ncell, xx, yy);
-	  fprintf (out6,"%g %g\n", xo, yo);
-	  
-	}
-      
-    }
-  fclose(out6);
-  
-  printf("STATE OF SURFACE-DENSITY INTERPOLATION IS: SUCESS\n");
-
-
-
-  
-  
   //--------------------------------------------------------------------------CALCULO DERIVADAS CAMPO DE DENSIDAD
 
   /*Derivadas del campo densidad superficial. Para obtener el gradiente de
@@ -716,8 +612,11 @@ int main(int argc, char *argv[])
    */
 
   
-  fourier(NtotalCells, Lbox);
+  fourier(Ncell, Lbox);
 
+  free(YC);
+  free(r);
+  free(dist);
   return 0;
 
 }
