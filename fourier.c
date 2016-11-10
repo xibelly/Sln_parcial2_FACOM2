@@ -34,10 +34,10 @@ void fourier(int n, double L)
   FILE *output2 = NULL;
   FILE *salida= NULL;
 
-  int i, N;
+  int i, j, N, cell_ID;
   fftw_complex *in=NULL, *dft=NULL, *idft=NULL;
   fftw_plan my_plan, my_plan2;
-  
+  double kx, ky, k2;
   
   N = n*n;
 
@@ -75,27 +75,30 @@ void fourier(int n, double L)
 
   salida = fopen("pbc_data.dat","w");
 
-  for(i=0; i<N; i++) 
-    {
+  for(i=0; i<N; i++)
+    {   
       in[i][0] = pad.density[i];
       in[i][1] = 0.0;
-
+	  
       fprintf(salida,"%lf\n", in[i][0]);
     }
-
-    
+  
+  
+  
   my_plan = fftw_plan_dft_2d(n, n, in, dft, FFTW_FORWARD, FFTW_ESTIMATE); //2D DFT:Discrete Fourier Transform
-
+  
   fftw_execute(my_plan);
-
+  
   output = fopen("DFT_2D.dat","w");
 
   for(i=0; i<N; i++)
-    {
+    {   
+      
       fprintf(output,"%lf %lf\n", dft[i][0] , dft[i][1]);
       
     }
-
+  
+  
   fclose(output);
   
   printf("THE STATE OF DFT IS: SUCESS\n");
@@ -111,7 +114,13 @@ void fourier(int n, double L)
 
   for(i=0; i<N; i++)
     {
-      fprintf(output2,"%lf %lf\n", idft[i][0]/N, idft[i][1]/N);
+      kx = (2.0 * M_PI * i) / L;
+
+      ky = (2.0 * M_PI * i) / L;
+      
+      k2 = sqrt ((kx * kx) + (ky * ky)); //magnitud del vector de onda
+
+      fprintf(output2,"%lf %lf\n", idft[i][0]/N*k2*k2, idft[i][1]/N*k2*k2);
     }
 
   fclose(output2);
@@ -119,9 +128,10 @@ void fourier(int n, double L)
   fftw_destroy_plan(my_plan2);
     
   printf("THE STATE OF IDFT IS: SUCESS\n");
-  
+ 
   fftw_free(in);
   fftw_free(dft);
   fftw_free(idft);
+  
   
 }

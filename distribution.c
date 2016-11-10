@@ -16,7 +16,7 @@
 
 int random_distribution(int N_part,double mu_x, double mu_y)  //Genera la distribucion de particulas
 {
-  int i;
+  int i, l;
   double x, y;
   const gsl_rng_type * T;
   gsl_rng * r;
@@ -37,18 +37,22 @@ int random_distribution(int N_part,double mu_x, double mu_y)  //Genera la distri
 
   if(write == NULL)
     printf("THE FILE: positions.dat CAN NOT BE OPENED\n");
-  
+
+  l = L*0.5;
 
   for (i = 0; i < N_part; i++)
     {
           
+      do{
       x = gsl_ran_gaussian (r, mu_x); //Gaussian distribution for axis x
-
-      part.x[i] = x * L;
-      
+      part.x[i] = x ;
+      }while(l<x<-l);
+     
+      do{
       y = gsl_ran_gaussian (r, mu_y); //Gaussian distribution for axis y
-      
-      part.y[i] = y * L;
+      part.y[i] = y ;
+      }while(l<y<-l);
+    
 
       fprintf (write,"%lf %lf \n", part.x[i] , part.y[i]);
     }

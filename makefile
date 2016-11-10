@@ -1,6 +1,6 @@
 CC = gcc
 
-CFLAGS = -c -O3  -I/home/$(USER)/local/include/ -I/usr/include/ -I.
+CFLAGS = -c -O2  -I/home/$(USER)/local/include/ -I/usr/include/ -I.
 
 CFLAGSDEBUG = -g -Wall -c -I/home/$(USER)/local/include/ -I/usr/include/ 
 

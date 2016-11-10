@@ -14,7 +14,10 @@
  * 
  
  */
-
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
+#include <time.h>
 
 
 int random_gfsr4(int N)

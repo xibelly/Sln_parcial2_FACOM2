@@ -17,6 +17,8 @@ double interpolador_akima_per(double xo, int N,  double *xx, double *yy) //Inter
   gsl_spline *interpolador;
 
  
+  gsl_sort(xx, 1, N*0.5);
+
   acelerador   = gsl_interp_accel_alloc();
   interpolador = gsl_spline_alloc(gsl_interp_akima_periodic, (size_t) N);
   gsl_spline_init(interpolador, xx, yy, (size_t) N);
@@ -31,3 +33,4 @@ double interpolador_akima_per(double xo, int N,  double *xx, double *yy) //Inter
   return value;
   
 }
+
